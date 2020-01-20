@@ -20,11 +20,11 @@ test_regression_model:
     - PYTHONPATH=./model_package python3 model_package/modeling_pipeline/train_pipeline.py
     - py.test -vv model_package/tests
 
-test_ml_api:
-  stage : test_ml_api
-  script:
-    - pip install -r model_api/requirements.txt
-    - py.test -vv model_api/tests -m "not differential"
+# test_ml_api:
+#   stage : test_ml_api
+#   script:
+#     - pip install -r model_api/requirements.txt
+#     - py.test -vv model_api/tests -m "not differential"
 
 
 
