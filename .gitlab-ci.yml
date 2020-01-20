@@ -6,8 +6,6 @@ before_script:
   - virtualenv venv
   - source venv/bin/activate
   - pip install --upgrade pip
-  - chmod +x ./scripts/fetch_kaggle_dataset.sh
-  - ./scripts/fetch_kaggle_dataset.sh
 
 stages:
   - test_regression_model
@@ -17,6 +15,8 @@ test_regression_model:
   stage : test_regression_model
   script:
     - pip install -r model_package/requirements.txt
+    - chmod +x ./scripts/fetch_kaggle_dataset.sh
+    - ./scripts/fetch_kaggle_dataset.sh
     - PYTHONPATH=./model_package python3 model_package/modeling_pipeline/train_pipeline.py
     - py.test -vv model_package/tests
 
