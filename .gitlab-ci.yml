@@ -1,52 +1,84 @@
-# This file is a template, and might need editing before it works on your project.
-# Official language image. Look for the different tagged releases at:
-# https://hub.docker.com/r/library/python/tags/
-image: python:latest
+version: 2
 
-# Change pip's cache directory to be inside the project directory since we can
-# only cache local items.
-variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+defaults: &defaults
+  docker:
+    - image: python:3.7.2
+  working_directory: ~/project
 
-# Pip's cache doesn't store the python packages
-# https://pip.pypa.io/en/stable/reference/pip_install/#caching
-#
-# If you want to also cache the installed packages, you have to install
-# them in a virtualenv and cache it as well.
-cache:
-  paths:
-    - .cache/pip
-    - venv/
-
-before_script:
-  - python -V  # Print out python version for debugging
-  - pip install virtualenv
-  - virtualenv venv
-  - source venv/bin/activate
-
-test:
-  script:
-    - python setup.py test
-    - pip install tox flake8  # you can also use tox
-    - tox -e py36,flake8
-
-run:
-  script:
-    - python setup.py bdist_wheel
-    # an alternative approach is to install and run:
-    - pip install dist/*
-    # run the command here
-  artifacts:
-    paths:
-      - dist/*.whl
-
-pages:
-  script:
-    - pip install sphinx sphinx-rtd-theme
-    - cd doc ; make html
-    - mv build/html/ ../public/
-  artifacts:
-    paths:
-      - public
-  only:
-    - master
+prepare_venv: &prepare_venv
+  run:
+    name: Create venv
+    command: |
+      python3 -m venv venv
+      source venv/bin/activate
+      pip install --upgrade pip
+fetch_data: &fetch_data
+  run:
+    name: Set script permissions and fetch data
+    command: |
+      source venv/bin/activate
+      chmod +x ./scripts/fetch_kaggle_dataset.sh
+      ./scripts/fetch_kaggle_dataset.sh
+jobs:
+  test_regression_model:
+    <<: *defaults
+    steps:
+      - checkout
+      - *prepare_venv
+      - run:
+          name: Install requirements
+          command: |
+            . venv/bin/activate
+            pip install -r model_package/requirements.txt
+      - *fetch_data
+      - run:
+          name: Train model
+          command: |
+            . venv/bin/activate
+            PYTHONPATH=./model_package python3 model_package/modeling_pipeline/train_pipeline.py
+      - run:
+          name: Run tests
+          command: |
+            . venv/bin/activate
+            py.test -vv model_package/tests
+  test_ml_api:
+    <<: *defaults
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - py-deps-{{ checksum "model_api/requirements.txt" }}
+      - run:
+          name: Runnning tests
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install --upgrade pip
+            pip install -r model_api/requirements.txt
+            py.test -vv model_api/tests -m "not differential"
+      - save_cache:
+          key: py-deps-{{ checksum "model_api/requirements.txt" }}
+          paths:
+            - "/venv"
+workflows:
+  version: 2
+  test-all:
+    jobs:
+      - test_regression_model
+      - test_ml_api
+      - train_and_upload_regression_model:
+          requires:
+            - test_regression_model
+            - test_ml_api
+            - section_9_differential_tests
+          filters:
+            branches:
+              only:
+                - master
+      - section_10_deploy_to_heroku:
+          requires:
+            - train_and_upload_regression_model
+          filters:
+            branches:
+              only:
+                - master
